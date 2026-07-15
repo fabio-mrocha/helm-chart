@@ -1,0 +1,40 @@
+apiVersion: v1
+entries:
+  app-chart:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-07-15T16:18:04.537499529-03:00"
+    dependencies:
+    - condition: gatewayApi.enabled
+      name: gateway-api
+      repository: https://fabio-mrocha.github.io/helm-chart
+      version: 1.0.0
+    description: A Helm chart for Kubernetes to sample Company
+    digest: fea08fcacf66a1b8f5773b07f48d297faf236b3382c09e7793ab6fba5cdbad0e
+    keywords:
+    - application
+    - sample
+    - kubernetes
+    - helm
+    name: app-chart
+    urls:
+    - https://fabio-mrocha.github.io/helm-chart/app-chart-1.0.0.tgz
+    version: 1.0.0
+  gateway-api:
+  - apiVersion: v1
+    appVersion: 1.0.0
+    created: "2026-07-15T16:18:04.53785254-03:00"
+    description: A Helm chart for Gateway API Config
+    digest: 2d52e409728867e29c85dcaf01d5033bb3283f4d05b15ac71928adcd9cb6ae80
+    keywords:
+    - gitops
+    - application
+    - sample
+    - kubernetes
+    - helm
+    - gateway-api
+    name: gateway-api
+    urls:
+    - https://fabio-mrocha.github.io/helm-chart/gateway-api-1.0.0.tgz
+    version: 1.0.0
+generated: "2026-07-15T16:18:04.536253443-03:00"
