@@ -1,0 +1,160 @@
+{{- if and .Values.istio.enabled .Values.istio.envoyFilter.enabled }}
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: {{ include "sample.releaseName" . }}
+spec:
+  workloadSelector:
+    labels:
+      {{- include "sample.selectorLabels" . | nindent 6 }}
+  configPatches:
+  - applyTo: CLUSTER
+    match:
+      context: SIDECAR_OUTBOUND
+    patch:
+      operation: ADD
+      value:
+        name: "envoy-{{ include "sample.releaseName" . }}"
+        type: STRICT_DNS
+        connect_timeout: 5s
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: "envoy-{{ include "sample.releaseName" . }}"
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: {{ .Values.istio.envoyFilter.keycloakHost }}
+                    port_value: 443
+        transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": "type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_OUTBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inline_code: |
+            -- Cache global de token
+            local token_cache = {
+              token = nil,
+              expiry = 0
+            }
+
+            -- Função para ler arquivo
+            function read_file(path)
+              local file = io.open(path, "r")
+              if not file then
+                return nil
+              end
+              local content = file:read("*all")
+              file:close()
+              return content:gsub("%s+", "")  -- Remove espaços/quebras
+            end
+
+            function envoy_on_request(request_handle)
+              -- Verifica se já existe Authorization header
+              local existing_auth = request_handle:headers():get("authorization")
+              if existing_auth then
+                request_handle:logInfo("Authorization header already exists, skipping")
+                return
+              end
+              
+              -- Retorna token do cache se ainda válido
+              local current_time = os.time()
+              if token_cache.token and current_time < token_cache.expiry then
+                request_handle:headers():add("Authorization", "Bearer " .. token_cache.token)
+                request_handle:logInfo("Using cached JWT token")
+                return
+              end
+
+              -- Lê configurações do ConfigMap
+              local KEYCLOAK_HOST = read_file("/etc/keycloak/config/KEYCLOAK_HOST")
+              local KEYCLOAK_REALM = read_file("/etc/keycloak/config/KEYCLOAK_REALM")
+              
+              -- Lê credenciais do Secret
+              local KEYCLOAK_CLIENT_ID = read_file("/etc/keycloak/secret/KEYCLOAK_CLIENT_ID")
+              local KEYCLOAK_CLIENT_SECRET = read_file("/etc/keycloak/secret/KEYCLOAK_CLIENT_SECRET")
+
+              request_handle:logInfo("Fetching JWT token from " .. KEYCLOAK_HOST .. " realm: " .. KEYCLOAK_REALM)
+              
+              -- Faz requisição ao Keycloak para obter token
+              local headers, response_body = request_handle:httpCall(
+                "envoy-{{ include "sample.releaseName" . }}",
+                {
+                  [":method"] = "POST",
+                  [":path"] = KEYCLOAK_REALM,
+                  [":authority"] = KEYCLOAK_HOST,
+                  ["content-type"] = "application/x-www-form-urlencoded"
+                },
+                "grant_type=client_credentials&client_id=" .. KEYCLOAK_CLIENT_ID .. "&client_secret=" .. KEYCLOAK_CLIENT_SECRET,
+                5000  -- timeout de 5 segundos
+              )
+              
+              -- Extrai o access_token da resposta JSON
+              local token = response_body:match('"access_token"%s*:%s*"([^"]+)"')
+              local expires_in = tonumber(response_body:match('"expires_in"%s*:%s*(%d+)')) or 300
+              
+              -- Injeta o token no header da requisição
+              if token then
+                -- Atualiza cache (renova 10 segundos antes de expirar)
+                token_cache.token = token
+                token_cache.expiry = current_time + expires_in - 10
+                
+                request_handle:headers():add("Authorization", "Bearer " .. token)
+                request_handle:logInfo("JWT token obtained and injected (expires in " .. expires_in .. "s)")
+              else
+                request_handle:logErr("Failed to extract token from response")
+                
+                -- Tenta extrair mensagem de erro
+                local error_desc = response_body:match('"error_description"%s*:%s*"([^"]+)"')
+                if error_desc then
+                  request_handle:logErr("Keycloak error: " .. error_desc)
+                end
+              end
+            end
+  {{- if .Values.istio.envoyFilter.kong.enabled }}
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_OUTBOUND
+      listener:
+        filterChain:
+          filter:
+            name: envoy.filters.network.http_connection_manager
+            subFilter:
+              name: envoy.filters.http.router
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.lua
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          inline_code: |
+            -- Função para ler arquivo
+            function read_file(path)
+              local file = io.open(path, "r")
+              if not file then
+                return nil
+              end
+              local content = file:read("*all")
+              file:close()
+              return content:gsub("%s+", "")  -- Remove espaços/quebras
+            end
+            function envoy_on_request(request_handle)
+              local KONG_API_KEY = read_file("/etc/keycloak/secret/KONG_API_KEY")
+              request_handle:headers():add("x-api-key", .. KONG_API_KEY)
+            end
+  {{- end }}
+{{- end }}

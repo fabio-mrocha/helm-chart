@@ -1,0 +1,287 @@
+{{- if .Values.deployment.enabled }}
+{{- if or .Values.deployment.bluegreen.enabled .Values.deployment.canary.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+{{- else }}
+apiVersion: apps/v1
+kind: Deployment
+{{- end }}
+metadata:
+  name: {{ include "sample.releaseName" . }}
+  annotations:
+  {{- if .Values.deployment.reloader }}
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+  {{- with .Values.deployment.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "sample.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "sample.selectorLabels" . | nindent 6 }}
+  strategy:
+    {{- if .Values.deployment.bluegreen.enabled }}
+    blueGreen:
+      activeService: '{{ include "sample.releaseName" . }}-active'
+      previewService: '{{ include "sample.releaseName" . }}-preview'
+      autoPromotionEnabled: {{ .Values.deployment.bluegreen.autoPromotionEnabled }}
+      autoPromotionSeconds: {{ .Values.deployment.bluegreen.autoPromotionSeconds }}
+      previewreplicas: {{ .Values.deployment.bluegreen.previewreplicas }}
+    {{- else if .Values.deployment.canary.enabled }}
+    canary:
+      steps:
+      - setWeight: 25
+      - pause: {duration: {{ .Values.deployment.canary.duration }}}
+      - setWeight: 50
+      - pause: {duration: {{ .Values.deployment.canary.duration }}}
+      - setWeight: 75
+      - pause: {duration: {{ .Values.deployment.canary.duration }}}
+      - setWeight: 100
+    {{- else }}
+    type: {{ .Values.deployment.strategy }}
+    {{- if eq .Values.deployment.strategy "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deployment.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.deployment.rollingUpdate.maxUnavailable }}
+    {{- end }}
+    {{- end }}
+  template:
+    metadata:
+      {{- $hasIstio := and .Values.istio.enabled .Values.istio.envoyFilter.enabled }}
+      {{- $hasCustom := not (empty .Values.podAnnotations) }}
+      {{- if or $hasIstio $hasCustom }}
+      annotations:
+        {{- if $hasIstio }}
+        sidecar.istio.io/userVolume: |
+          [
+          {{- if .Values.istio.envoyFilter.shared.enabled }}
+            {"name":"istio-config","configMap":{"name":"{{ .Values.project.name }}"}},
+          {{- else }}
+            {"name":"istio-config","configMap":{"name":"{{ include "sample.releaseName" . }}"}},
+          {{- end }}
+            {"name":"istio-secret","secret":{"secretName":"{{ include "sample.releaseName" . }}"}}
+          ]
+        sidecar.istio.io/userVolumeMount: |
+          [
+            {"name":"istio-config","mountPath":"/etc/keycloak/config","readOnly":true},
+            {"name":"istio-secret","mountPath":"/etc/keycloak/secret","readOnly":true}
+          ]
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      labels:
+      {{- if and .Values.istio.enabled }}
+        sidecar.istio.io/inject: "true"
+      {{- end }}
+        {{- include "sample.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "sample.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- if .Values.initContainers.enabled }}
+      initContainers:
+        - name: init-container
+          {{- if .Values.initContainers.image.enabled }}
+          image: "{{ .Values.initContainers.image.repository }}:{{ .Values.initContainers.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.initContainers.image.pullPolicy }}
+          {{- else }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- end }}
+          {{- if or .Values.configmap.enabled .Values.secret.external.enabled .Values.configmap.shared.enabled }}
+          envFrom:
+            {{- if .Values.configmap.shared.enabled }}
+            - configMapRef:
+                name: {{ .Values.configmap.shared.name }}
+            {{- end }}
+            {{- if .Values.configmap.enabled }}
+            - configMapRef:
+                name: {{ include "sample.releaseName" . }}
+            {{- end }}
+            {{- if .Values.secret.external.enabled }}
+            - secretRef:
+                name: {{ include "sample.releaseName" . }}
+            {{- end }}
+          {{- end }}
+          {{- with .Values.initContainers.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.initContainers.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.initContainers.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.initContainers.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+    {{- end }}
+      containers:
+        - name: {{ include "sample.releaseName" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          {{- if .Values.service.additional.ports }}
+          {{- range .Values.service.additional.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .port }}
+              protocol: {{ .protocol | default "TCP" }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            {{- if .Values.livenessProbe.socket }}
+            tcpSocket:
+              port: {{ .Values.service.socket.port }}
+            {{- else if .Values.livenessProbe.exec.command }}
+            exec:
+              command: {{ toYaml .Values.livenessProbe.exec.command | nindent 16 }}
+            {{- else }}
+            httpGet:
+              path: {{ .Values.livenessProbe.path }}
+              port: {{ .Values.service.port }}
+              scheme: HTTP
+            {{- end }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            {{- if .Values.readinessProbe.socket }}
+            tcpSocket:
+              port: {{ .Values.service.socket.port }}
+            {{- else if .Values.readinessProbe.exec.command }}
+            exec:
+              command: {{ toYaml .Values.readinessProbe.exec.command | nindent 16 }}
+            {{- else }}
+            httpGet:
+              path: {{ .Values.readinessProbe.path }}
+              port: {{ .Values.service.port }}
+              scheme: HTTP
+            {{- end }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            successThreshold: {{ .Values.readinessProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            {{- if .Values.startupProbe.socket }}
+            tcpSocket:
+              port: {{ .Values.service.socket.port }}
+            {{- else if .Values.startupProbe.exec.command }}
+            exec:
+              command: {{ toYaml .Values.startupProbe.exec.command | nindent 16 }}
+            {{- else }}
+            httpGet:
+              path: {{ .Values.startupProbe.path }}
+              port: {{ .Values.service.port }}
+              scheme: HTTP
+            {{- end }}
+            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            successThreshold: {{ .Values.startupProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.configmap.enabled .Values.secret.external.enabled .Values.configmap.shared.enabled }}
+          envFrom:
+            {{- if .Values.configmap.shared.enabled }}
+            - configMapRef:
+                name: {{ .Values.configmap.shared.name }}
+            {{- end }}
+            {{- if .Values.configmap.enabled }}
+            - configMapRef:
+                name: {{ include "sample.releaseName" . }}
+            {{- end }}
+            {{- if .Values.secret.external.enabled }}
+            - secretRef:
+                name: {{ include "sample.releaseName" . }}
+            {{- end }}
+          {{- end }}
+          {{- if or .Values.env ( and .Values.dynatrace.enabled ( eq .Values.project.env "prd" ) ) }}
+          env:
+          {{- if .Values.env}}
+          {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- if and .Values.dynatrace.enabled ( eq .Values.project.env "prd" ) }}
+            {{- include "sample.dynatraceEnvs" . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.deployment.terminationGracePeriod.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep","20"]
+      terminationGracePeriodSeconds: {{ .Values.deployment.terminationGracePeriod.seconds }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.affinity ( eq .Values.project.env "prd" ) }}
+      affinity:
+        {{- if eq .Values.project.env "prd" }}
+          {{- include "sample.podAntiAffinityPRD" . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.affinity }}
+        {{- with .Values.affinity }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.deployment.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

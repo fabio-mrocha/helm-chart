@@ -1,0 +1,6 @@
+dependencies:
+- name: gateway-api
+  repository: https://fabio-mrocha.github.io/helm-chart
+  version: 1.0.0
+digest: sha256:c6404bf7ae4a4f1a5c682a06eef69116dff2477a54809f36fd3a7f4086800fd0
+generated: "2026-07-15T16:37:48.958370098-03:00"

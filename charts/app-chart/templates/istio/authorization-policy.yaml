@@ -1,0 +1,117 @@
+{{- if and .Values.istio.enabled .Values.istio.authorizationPolicy.enabled }}
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ include "sample.releaseName" . }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sample.selectorLabels" . | nindent 6 }}
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    to:
+    - operation:
+        methods: ["GET", "HEAD", "OPTIONS"]
+        {{- with .Values.istio.authorizationPolicy.view.paths }}
+        paths:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    when:
+    - key: request.auth.claims[realm_access][roles]
+      values: ['{{ include "sample.releaseName" . }}-view']
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    to:
+    - operation:
+        methods: ["POST"]
+        {{- with .Values.istio.authorizationPolicy.create.paths }}
+        paths:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    when:
+    - key: request.auth.claims[realm_access][roles]
+      values: ['{{ include "sample.releaseName" . }}-create']
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    to:
+    - operation:
+        methods: ["PUT", "PATCH"]
+        {{- with .Values.istio.authorizationPolicy.update.paths }}
+        paths:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    when:
+    - key: request.auth.claims[realm_access][roles]
+      values: ['{{ include "sample.releaseName" . }}-update']
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    to:
+    - operation:
+        methods: ["DELETE"]
+        {{- with .Values.istio.authorizationPolicy.delete.paths }}
+        paths:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    when:
+    - key: request.auth.claims[realm_access][roles]
+      values: ['{{ include "sample.releaseName" . }}-delete']
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    to:
+    - operation:
+        {{- with .Values.istio.authorizationPolicy.admin.paths }}
+        paths:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+    when:
+    - key: request.auth.claims[realm_access][roles]
+      values: ['{{ include "sample.releaseName" . }}-admin']
+  {{- range .Values.istio.authorizationPolicy.additional }}
+  - from:
+      - source:
+          requestPrincipals: ["*"]
+    {{- if or .methods .paths }}
+    to:
+    - operation:
+        {{- if .methods }}
+        methods: {{ .methods | toYaml | nindent 8 }}
+        {{- end }}
+        {{- if .paths }}
+        paths:
+          {{- toYaml .paths | nindent 8 }}
+        {{- end }}
+    {{- end }}
+    {{- if ne (toString .when) "false" }}
+    when:
+    - key: request.auth.claims[realm_access][roles]
+      values: ['{{ include "sample.releaseName" $ }}-{{ .name }}']
+    {{- end }}
+  {{- end }}
+  {{- range .Values.istio.authorizationPolicy.unauthenticated }}
+  - to:
+    - operation:
+        methods: {{ .methods | toYaml | nindent 8 }}
+        {{- if .paths }}
+        paths:
+          {{- toYaml .paths | nindent 8 }}
+        {{- end }}
+    {{- if ne (toString .when) "false" }}
+    when:
+    - key: request.auth.claims[realm_access][roles]
+      values: ['{{ include "sample.releaseName" $ }}-{{ .name }}']
+    {{- end }}
+  {{- end }}
+  {{- if and .Values.istio.authorizationPolicy.allowDevEnvironment.enabled ( eq .Values.project.env "dev" ) }}
+  - when:
+    - key: request.headers[x-internal-access-phrase]
+      values:
+        {{- toYaml .Values.istio.authorizationPolicy.allowDevEnvironment.headers | nindent 6 }}
+  {{- end }}
+{{- end }}

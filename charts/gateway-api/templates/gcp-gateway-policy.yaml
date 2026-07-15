@@ -1,0 +1,26 @@
+{{- if .Values.gatewayApi.enabled }}
+{{- $root := . }}
+{{- range $type, $gw := .Values.gatewayApi.gateway }}
+{{- if and $gw.enabled (dig "gcpGatewayPolicy" "enabled" false $gw) }}
+---
+apiVersion: networking.gke.io/v1
+kind: GCPGatewayPolicy
+metadata:
+  labels:
+    {{- include "gateway.labels" $root | nindent 4 }}
+  name: {{ include "gateway.releaseName" $root }}-{{ $gw.nameSuffix | default $type }}
+spec:
+  default:
+    {{- if $gw.gcpGatewayPolicy.allowGlobalAccess }}
+    allowGlobalAccess: {{ dig "gcpGatewayPolicy" "allowGlobalAccess" true $gw }}
+    {{- end }}
+    {{- if $gw.gcpGatewayPolicy.sslPolicy }}
+    sslPolicy: {{ $gw.gcpGatewayPolicy.sslPolicy }}
+    {{- end }}
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{ include "gateway.releaseName" $root }}-{{ $gw.nameSuffix | default $type }}
+{{- end }}
+{{- end }}
+{{- end }}

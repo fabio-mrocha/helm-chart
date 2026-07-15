@@ -1,0 +1,22 @@
+{{- if .Values.gatewayApi.enabled }}
+{{- $root := . }}
+{{- $releaseName := include "gateway.releaseName" . }}
+{{- range $policyName, $hcp := .Values.gatewayApi.healthCheckPolicies }}
+{{- if and $hcp.enabled (dig "gcpBackendPolicy" "enabled" false $hcp) }}
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  labels:
+    {{- include "gateway.labels" $root | nindent 4 }}
+  name: {{ $releaseName }}-{{ $policyName }}
+spec:
+  default:
+    {{- toYaml $hcp.gcpBackendPolicy.default | nindent 4 }}
+  targetRef:
+    group: ""
+    kind: {{ $hcp.targetRef.kind | default "Service" }}
+    name: {{ $hcp.targetRef.name }}
+{{- end }}
+{{- end }}
+{{- end }}

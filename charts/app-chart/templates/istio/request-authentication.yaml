@@ -1,0 +1,18 @@
+{{- if and .Values.istio.enabled .Values.istio.requestAuthentication.enabled }}
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: {{ include "sample.releaseName" . }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sample.selectorLabels" . | nindent 6 }}
+  jwtRules:
+  {{- range .Values.istio.requestAuthentication.jwtRules }}
+    - issuer: {{ .issuer }}
+      jwksUri: {{ .jwksUri }}
+      fromHeaders:
+        - name: Authorization
+          prefix: "Bearer "
+  {{- end }}
+{{- end }}

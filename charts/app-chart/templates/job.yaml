@@ -1,0 +1,86 @@
+{{- if and .Values.job.enabled (not .Values.deployment.enabled) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "sample.releaseName" . }}-{{ .Values.image.tag | trunc 8 }}
+  {{- with .Values.job.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "sample.labels" . | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  completions: {{ .Values.job.completions }}
+  manualSelector: true
+  podReplacementPolicy: {{ .Values.job.podReplacementPolicy }}
+  suspend: {{ .Values.job.suspend }}
+  selector:
+    matchLabels:
+      {{- include "sample.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.job.jobTemplate.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "sample.labels" . | nindent 8 }}
+        {{- with .Values.job.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+      - name: {{ include "sample.releaseName" . }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- if .Values.job.command }}
+        command:
+          {{- toYaml .Values.job.command | nindent 14 }}
+        {{- end }}
+        {{- if or .Values.configmap.enabled .Values.secret.external.enabled .Values.configmap.shared.enabled }}
+        envFrom:
+          {{- if .Values.configmap.shared.enabled }}
+          - configMapRef:
+              name: {{ .Values.configmap.shared.name }}
+          {{- end }}
+          {{- if .Values.configmap.enabled }}
+          - configMapRef:
+              name: {{ include "sample.releaseName" . }}
+          {{- end }}
+          {{- if .Values.secret.external.enabled }}
+          - secretRef:
+              name: {{ include "sample.releaseName" . }}
+          {{- end }}
+        {{- end }}
+        {{- with .Values.job.env }}
+        env:
+          {{- toYaml . | indent 10 }}
+        {{- end }}
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .Values.volumeMounts }}
+        volumeMounts:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: {{ .Values.job.jobTemplate.restartPolicy }}
+      {{- with .Values.job.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "sample.serviceAccountName" . }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

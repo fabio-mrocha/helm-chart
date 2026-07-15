@@ -1,0 +1,26 @@
+{{- if .Values.gatewayApi.enabled }}
+{{- $root := . }}
+{{- range $type, $gw := .Values.gatewayApi.gateway }}
+{{- if $gw.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  {{- with $gw.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "gateway.labels" $root | nindent 4 }}
+  name: {{ include "gateway.releaseName" $root }}-{{ $gw.nameSuffix | default $type }}
+spec:
+  gatewayClassName: {{ $gw.className }}
+  {{- if $gw.addresses }}
+  addresses:
+    {{- toYaml $gw.addresses | nindent 4 }}
+  {{- end }}
+  listeners:
+{{- toYaml $gw.listeners | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

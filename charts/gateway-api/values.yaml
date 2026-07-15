@@ -1,0 +1,107 @@
+service:
+  port: 8080
+gatewayApi:
+  enabled: true
+  gateway:
+    internal:
+      enabled: false
+      className: gke-l7-rilb
+      annotations: {}
+      #   networking.gke.io/certmap: example-certmap
+      nameSuffix: ""
+      gcpGatewayPolicy:
+        enabled: true
+        allowGlobalAccess: true
+        # sslPolicy: tls12-restricted
+      listeners:
+        - name: https
+          protocol: HTTPS
+          port: 443
+          tls:
+            mode: Terminate
+            options:
+              networking.gke.io/cert-manager-certs: "crt-useast1-int-intsample"
+          allowedRoutes:
+            namespaces:
+              from: All
+    external:
+      enabled: false
+      className: gke-l7-global-external-managed
+      annotations:
+        networking.gke.io/certmap: example-certmap
+      nameSuffix: ""
+      listeners:
+        - name: https
+          protocol: HTTPS
+          port: 443
+          allowedRoutes:
+            namespaces:
+              from: All
+    # regional:
+    #   enabled: false
+    #   className: gke-l7-regional-external-managed
+    #   annotations: {}
+    #   nameSuffix: ""
+    #   listeners:
+    #     - name: https
+    #       protocol: HTTPS
+    #       port: 443
+    #       tls:
+    #         mode: Terminate
+    #         options:
+    #           networking.gke.io/cert-manager-certs: example-cert1, example-cert2
+  healthCheckPolicies:
+    healthcheck:
+      enabled: false
+      targetRef:
+        kind: Service
+        name: internal
+      default:
+        config:
+          type: HTTP
+          httpHealthCheck:
+            portSpecification: USE_FIXED_PORT
+            port: 8080
+            requestPath: /health
+        checkIntervalSec: 10
+        timeoutSec: 5
+        healthyThreshold: 2
+        unhealthyThreshold: 2
+      gcpBackendPolicy:
+        enabled: false
+        default:
+          securityPolicy: akamai-allow-list
+    # api-routes:
+    #   enabled: true
+    #   targetRef:
+    #     kind: Service
+    #     name: api-service
+    #   default:
+    #     config:
+    #       type: HTTP
+    #       httpHealthCheck:
+    #         port: 8080
+    #         requestPath: /health
+  httpRoute:
+    enabled: true
+    parentRefs:
+    - name: gateway1
+    # - name: gateway2
+    hostnames: []
+    # - example1.com
+    # - example2.com
+    rules:
+    # - matches:
+    #   - path: /path
+    #   backendRefs:
+    #   - name: site
+    #     port: 80
+    # - matches:
+    #   - path: /shop
+    #     type: Exact
+    #   backendRefs:
+    #   - name: store
+    #     port: 443
+    - matches:
+      - path: /app1
+      - path: /app2

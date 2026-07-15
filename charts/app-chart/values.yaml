@@ -1,0 +1,349 @@
+# Default values for sample.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+app:
+  name: application
+
+project:
+  name: sample
+  env: dev
+
+revisionHistoryLimit: 1
+
+deployment:
+  enabled: true
+  bluegreen:
+    enabled: false
+    hostPreview:
+      enabled: false
+    autoPromotionEnabled: false
+    autoPromotionSeconds: 15
+    previewreplicas: 1
+  canary:
+    enabled: false
+    duration: 15
+  strategy: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 0
+  reloader: true
+  annotations: {}
+  terminationGracePeriod:
+    enabled: true
+    seconds: 30
+  securityContext: {}
+  additional:
+    ports: []
+
+cronjob:
+  enabled: false
+  schedule: "*/1 * * * *"
+  timeZone: America/Sao_Paulo
+  failedJobsHistoryLimit: 1
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    annotations: {}
+    restartPolicy: OnFailure
+  annotations: {}
+  env: {}
+  labels: {}
+  command: []
+  securityContext: {}
+  suspend: false
+
+job:
+  enabled: false
+  backoffLimit: 4
+  completions: 1
+  podReplacementPolicy: TerminatingOrFailed
+  suspend: false
+  jobTemplate:
+    annotations: {}
+    restartPolicy: OnFailure
+  annotations: {}
+  env: {}
+  labels: {}
+  command: []
+  securityContext: {}
+
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 2
+  maxUnavailable: ""
+
+initContainers:
+  enabled: false
+  command: []
+  args: []
+  image:
+    enabled: false
+    repository: docker.io/sample-platform/application
+    pullPolicy: IfNotPresent
+    tag: "v0.0.1"
+  env: []
+  volumeMounts: []
+
+env: []
+#   - name: ENVIRONMENT
+#     value: dev
+
+replicas: 1
+
+image:
+  repository: docker.io/sample-platform/application
+  pullPolicy: IfNotPresent
+  tag: "v0.0.1"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  enabled: false
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  # runAsUser: 1000
+  # runAsGroup: 1000
+
+configmap:
+  enabled: true
+  shared:
+    enabled: false
+    name: sample-configmap
+  data: {}
+  binaryData: {}
+
+secret:
+  external:
+    enabled: false
+    annotations: {}
+    refreshInterval: 5m
+    default:
+      enabled: true
+    database:
+      enabled: false
+      name: sample-db
+    additional: []
+      # - sample-additional-secret
+
+service:
+  enabled: true
+  annotations: {}
+  headless: false
+  type: ClusterIP
+  port: 8080
+  socket:
+    port: 8080
+  additional:
+    ports: []
+    # - port: 9090
+    #   targetPort: http
+    #   protocol: TCP
+    #   name: metrics
+
+ingress:
+  enabled: true
+  className: kong
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: customers-api.sample.com
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+    # - secretName: sample-secret-tls
+    #   hosts:
+    #     - '*.sample.com'
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+livenessProbe:
+  enabled: true
+  socket: false
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  successThreshold: 1
+  timeoutSeconds: 2
+  failureThreshold: 15
+  exec:
+    command: []
+
+readinessProbe:
+  enabled: true
+  socket: false
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  successThreshold: 1
+  timeoutSeconds: 2
+  failureThreshold: 15
+  exec:
+    command: []
+
+startupProbe:
+  enabled: false
+  socket: false
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  successThreshold: 1
+  timeoutSeconds: 2
+  failureThreshold: 15
+  exec:
+    command: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+  # behavior:
+  #   scaleDown:
+  #     policies:
+  #     selectPolicy: Min
+  #     stabilizationWindowSeconds: 30
+  #   scaleUp:
+  #     policies:
+  #     selectPolicy: Max
+  #     stabilizationWindowSeconds: 60
+
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+global: {}
+
+dynatrace:
+  enabled: false
+
+persistentVolume:
+  enabled: false
+  # spec:
+  #   accessModes:
+  #     - ReadWriteOnce
+  # claimRef:
+  #   name: sample-application
+  #   namespace: azure-apps
+
+persistentVolumeClaim:
+  enabled: false
+  # spec:
+  #   accessModes:
+  #     - ReadWriteOnce
+  #   resources:
+  #     requests:
+  #       storage: 1Gi
+
+istio:
+  enabled: false
+  serviceAccount:
+    enabled: true
+  peerAuthentication:
+    enabled: false
+  authorizationPolicy:
+    enabled: true
+    allowDevEnvironment:
+      enabled: true
+      headers: ["only-dev-environment"]
+    admin:
+      paths: ["/health"]
+      # paths: ["/health", "/admin"]
+    create:
+      paths: ["/health"]
+      # paths: ["/health", "/create"]
+    delete:
+      paths: ["/health"]
+        # - /health
+        # - /delete
+    update:
+      paths: ["/health"]
+      # paths: ["/health", "/update"]
+    view:
+      paths: ["/health"]
+        # - /health
+        # - /view
+        # - /info*
+    additional: []
+      # - name: editor
+      #   methods: ["POST", "PUT", "GET"]
+      #   paths: ["/info", "/health"]
+      #   when: false
+      # - name: administrator
+      #   methods: ["DELETE", "GET", "POST", "PUT"]
+      #   paths: ["/admin", "/health", "/auth"]
+      # - name: developer
+    unauthenticated: []
+      # - name: unauthenticated-editor
+      #   methods: ["POST", "PUT", "GET"]
+      #   paths: ["/info", "/health"]
+      # - name: unauthenticated-admin
+      #   methods: ["DELETE", "GET", "POST", "PUT"]
+      #   paths: ["/admin", "/health", "/auth"]
+      # - name: unauthenticated-developer
+      #   methods: ["GET"]
+      #   when: false
+  requestAuthentication:
+    enabled: true
+    jwtRules:
+      - issuer: https://keycloak-stg.sample.com/auth/realms/istio
+        jwksUri: https://keycloak-stg.sample.com/auth/realms/istio/protocol/openid-connect/certs
+  envoyFilter:
+    enabled: true
+    shared:
+      enabled: true
+    kong:
+      enabled: false
+    keycloakHost: keycloak-stg.sample.com
+  gateway:
+    enabled: false
+    port: 443
+    protocol: HTTPS
+  virtualService:
+    enabled: false
+    path: /
+    host: api-stg.sample.com
+    port: 8080
+  destinationRule:
+    enabled: false
+    host: api-stg.sample.com
+
+gatewayApi:
+  enabled: false

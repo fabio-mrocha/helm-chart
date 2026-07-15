@@ -1,0 +1,70 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "sample.releaseName" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "sample.releaseName" . }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "sample.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+  {{- range .Values.ingress.hosts }}
+    - host: {{ .host }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "ImplementationSpecific" }}
+            backend:
+              service:
+              {{- if and $.Values.deployment.bluegreen.enabled }}
+                name: {{ $fullName }}-active
+              {{- else }}
+                {{- if .serviceName }}
+                name: {{ .serviceName }}
+                {{- else }}
+                name: {{ $fullName }}
+                {{- end }}
+              {{- end }}
+                port:
+                {{- if .servicePort }}
+                  number: {{ .servicePort }}
+                {{- else }}
+                  number: {{ $.Values.service.port }}
+                {{- end }}
+          {{- if and $.Values.deployment.bluegreen.enabled (not $.Values.deployment.bluegreen.hostPreview.enabled) }}
+          - path: /preview{{ .path }}
+            pathType: {{ .pathType | default "ImplementationSpecific" }}
+            backend:
+              service:
+                name: {{ $fullName }}-preview
+                port:
+                  number: {{ $.Values.service.port }}
+          {{- end }}
+          {{- end }}
+    {{- if $.Values.deployment.bluegreen.hostPreview.enabled }}
+    - host: preview-{{ .host }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "ImplementationSpecific" }}
+            backend:
+              service:
+                name: {{ $fullName }}-preview
+                port:
+                  number: {{ $.Values.service.port }}
+          {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  {{- with .Values.ingress.tls }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+{{- end }}

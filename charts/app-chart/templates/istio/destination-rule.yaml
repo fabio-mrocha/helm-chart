@@ -1,0 +1,12 @@
+{{- if and .Values.istio.enabled .Values.istio.destinationRule.enabled }}
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: {{ include "sample.releaseName" . }}
+spec:
+  host: {{ .Values.istio.destinationRule.host }}
+  subsets:
+    - name: {{ include "sample.releaseName" . }}
+      labels:
+        app: {{ include "sample.releaseName" . }}
+{{- end }}

@@ -1,0 +1,54 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "sample.releaseName" . }}
+  labels:
+    {{- include "sample.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+  {{- if or .Values.deployment.bluegreen.enabled .Values.deployment.canary.enabled }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+  {{- else }}
+    apiVersion: apps/v1
+    kind: Deployment
+  {{- end }}
+    name: {{ include "sample.releaseName" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  {{- if .Values.autoscaling.behavior }}
+  behavior:
+    scaleUp:
+      policies:
+      - periodSeconds: 30
+        type: Percent
+        value: 100
+      selectPolicy: {{ .Values.autoscaling.behavior.scaleUp.selectPolicy | default "Max" }}
+      stabilizationWindowSeconds: {{ .Values.autoscaling.behavior.scaleUp.stabilizationWindowSeconds | default 60 }}
+    scaleDown:
+      policies:
+      - periodSeconds: 30
+        type: Percent
+        value: 50
+      selectPolicy: {{ .Values.autoscaling.behavior.scaleDown.selectPolicy | default "Min" }}
+      stabilizationWindowSeconds: {{ .Values.autoscaling.behavior.scaleDown.stabilizationWindowSeconds | default 30 }}
+  {{- end }}
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
